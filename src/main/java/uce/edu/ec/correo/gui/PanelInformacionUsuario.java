@@ -71,7 +71,7 @@ public class PanelInformacionUsuario extends JPanel {
                 BorderFactory.createLineBorder(new Color(220, 220, 220), 1),
                 BorderFactory.createEmptyBorder(40, 50, 40, 50)
         ));
-        panelCentral.setPreferredSize(new Dimension(700, 600));
+        panelCentral.setPreferredSize(new Dimension(700, 680));
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(8, 15, 8, 15);
@@ -159,6 +159,23 @@ public class PanelInformacionUsuario extends JPanel {
         panelBotones.add(btnCambiarPassword, gbcBtn);
 
         gbcBtn.gridy = 1;
+        JButton btnCentroSolicitudes = new JButton(" Centro de Solicitudes y Mejoras", IconoUtils.iconoChat(20));
+        btnCentroSolicitudes.setFont(new Font("Arial", Font.BOLD, 14));
+        btnCentroSolicitudes.setForeground(Color.BLACK);
+        btnCentroSolicitudes.setBackground(Color.WHITE);
+        btnCentroSolicitudes.setFocusPainted(false);
+        btnCentroSolicitudes.setPreferredSize(new Dimension(320, 45));
+        btnCentroSolicitudes.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btnCentroSolicitudes.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createEmptyBorder(10, 20, 10, 20)
+        ));
+        btnCentroSolicitudes.setHorizontalAlignment(SwingConstants.LEFT);
+        btnCentroSolicitudes.setIconTextGap(10);
+        btnCentroSolicitudes.addActionListener(e -> abrirCentroSolicitudes());
+        panelBotones.add(btnCentroSolicitudes, gbcBtn);
+
+        gbcBtn.gridy = 2;
 
         // Botón Eliminar Cuenta
         btnEliminarCuenta = new JButton(" Eliminar Mi Cuenta", IconoUtils.iconoEliminarCuenta(20));
@@ -680,5 +697,10 @@ public class PanelInformacionUsuario extends JPanel {
                     JOptionPane.ERROR_MESSAGE
             );
         }
+    }
+
+    private void abrirCentroSolicitudes() {
+        if (!empresa.hayUsuarioLogueado()) return;
+        new DialogoCentroSolicitudes(SwingUtilities.getWindowAncestor(this), empresa).setVisible(true);
     }
 }

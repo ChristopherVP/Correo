@@ -1,6 +1,7 @@
 package uce.edu.ec.correo.dominio;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.io.Serializable;
 
@@ -50,6 +51,10 @@ public class Usuario implements Serializable {
     // Lista de correos electrónicos del usuario
     private ArrayList<Correo> correos;
 
+    private LocalDateTime fechaRegistro;
+
+    private boolean suspendida;
+
     /**
      * Constructor que crea un nuevo usuario.
      * Inicializa todas las listas vacías.
@@ -97,6 +102,10 @@ public class Usuario implements Serializable {
 
         // Inicializa la lista vacía de correos
         this.correos = new ArrayList<>();
+
+        this.fechaRegistro = LocalDateTime.now();
+
+        this.suspendida = false;
     }
 
     // ==================== GETTERS Y SETTERS ====================
@@ -234,6 +243,18 @@ public class Usuario implements Serializable {
      */
     public ArrayList<Correo> getCorreos() {
         return correos;
+    }
+
+    public LocalDateTime getFechaRegistro() {
+        return fechaRegistro;
+    }
+
+    public boolean isSuspendida() {
+        return suspendida;
+    }
+
+    public void setSuspendida(boolean suspendida) {
+        this.suspendida = suspendida;
     }
 
     /**

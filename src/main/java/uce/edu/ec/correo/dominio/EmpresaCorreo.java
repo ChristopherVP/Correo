@@ -1,9 +1,22 @@
 package uce.edu.ec.correo.dominio;
 
+import uce.edu.ec.correo.util.ConfiguracionAdmin;
+import uce.edu.ec.correo.util.ControlIntentos;
+import uce.edu.ec.correo.util.SeguridadUtil;
 import uce.edu.ec.correo.util.Validador;
 import uce.edu.ec.correo.util.ValidationException;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.io.*;
 
 /**
@@ -18,8 +31,6 @@ import java.io.*;
  *
  * Utiliza serialización de Java para guardar y cargar datos del sistema.
  *
- * @author Sistema de Correo UCE
- * @version 1.0
  */
 public class EmpresaCorreo implements Serializable {
 
@@ -51,6 +62,12 @@ public class EmpresaCorreo implements Serializable {
      */
     private Usuario usuarioActual;
 
+    private CentroAdministracion administracion;
+
+    private transient Administrador administradorActual;
+
+    private transient ControlIntentos controlRecuperacion;
+
     // ==================== CONSTRUCTOR ====================
 
     /**
@@ -63,6 +80,8 @@ public class EmpresaCorreo implements Serializable {
 
         // No hay usuario logueado al inicio
         this.usuarioActual = null;
+        this.administracion = new CentroAdministracion();
+        this.administracion.asegurarAdministradorPrincipal();
     }
 
     // ==================== PERSISTENCIA DE DATOS ====================
@@ -125,6 +144,7 @@ public class EmpresaCorreo implements Serializable {
             System.out.println("Datos cargados exitosamente");
 
             // Retorna la instancia cargada
+            empresa.inicializarAdministracion();
             return empresa;
 
         } catch (IOException | ClassNotFoundException e) {
@@ -204,6 +224,13 @@ public class EmpresaCorreo implements Serializable {
                 throw new ValidationException("Ya existe un usuario con este email", "Email");
             }
         }
+        if (ConfiguracionAdmin.esEmailDeAdministrador(usuario.getEmail())) {
+            throw new ValidationException(
+                    "El dominio " + ConfiguracionAdmin.DOMINIO_ADMIN + " está reservado para administradores", "Email");
+        }
+        if (centro().buscarAdministrador(usuario.getEmail()).isPresent()) {
+            throw new ValidationException("Ya existe una cuenta con este email", "Email");
+        }
 
         // Valida que el nombre solo contenga letras y espacios
         if (!Validador.validarNombre(usuario.getNombre())) {
@@ -251,6 +278,7 @@ public class EmpresaCorreo implements Serializable {
         Usuario usuario = usuarioActual;
         boolean eliminado = usuarios.removeIf(u -> u.getEmail().equalsIgnoreCase(usuario.getEmail()));
         if (eliminado) {
+            centro().anonimizarSolicitudesDe(usuario.getEmail());
             usuarioActual = null;
             guardarDatosAutomaticamente();
         }
@@ -264,10 +292,19 @@ public class EmpresaCorreo implements Serializable {
         if (password == null || password.trim().isEmpty()) {
             throw new ValidationException("Debe ingresar un password", "Password");
         }
+        Administrador administrador = centro().buscarAdministrador(email).orElse(null);
+        if (administrador != null) {
+            return iniciarSesionAdministrador(administrador, password);
+        }
         for (Usuario u : usuarios) {
             if (u.getEmail().equalsIgnoreCase(email)) {
                 if (u.validarPassword(password)) {
+                    if (u.isSuspendida()) {
+                        throw new ValidationException(
+                                "Su cuenta está suspendida. Comuníquese con el soporte de EcuMail.", "Email");
+                    }
                     usuarioActual = u;
+                    administradorActual = null;
                     return true;
                 } else {
                     throw new ValidationException("Password incorrecto", "Password");
@@ -279,6 +316,7 @@ public class EmpresaCorreo implements Serializable {
 
     public void cerrarSesion() {
         usuarioActual = null;
+        administradorActual = null;
     }
 
     public Usuario getUsuarioActual() {
@@ -826,5 +864,356 @@ public class EmpresaCorreo implements Serializable {
             }
         }
         return borradores;
+    }
+
+    private static final Pattern PATRON_EMAIL_ADMIN =
+            Pattern.compile("^[a-z0-9._+-]+@[a-z0-9-]+(\\.[a-z0-9-]+)+$");
+
+    private CentroAdministracion centro() {
+        if (administracion == null) {
+            administracion = new CentroAdministracion();
+            administracion.asegurarAdministradorPrincipal();
+        }
+        return administracion;
+    }
+
+    private void inicializarAdministracion() {
+        boolean huboCambios = administracion == null;
+        if (huboCambios) {
+            administracion = new CentroAdministracion();
+        }
+        if (administracion.asegurarAdministradorPrincipal()) {
+            huboCambios = true;
+        }
+        if (huboCambios) {
+            guardarDatosAutomaticamente();
+        }
+    }
+
+    private ControlIntentos controlRecuperacion() {
+        if (controlRecuperacion == null) {
+            controlRecuperacion = new ControlIntentos(3, Duration.ofMinutes(15));
+        }
+        return controlRecuperacion;
+    }
+
+    private boolean iniciarSesionAdministrador(Administrador admin, String password) throws ValidationException {
+        if (!admin.validarPassword(password)) {
+            centro().registrarAuditoria(admin.getEmail(), "LOGIN_ADMIN_FALLIDO", admin.getEmail(),
+                    "Contraseña incorrecta");
+            guardarDatosAutomaticamente();
+            throw new ValidationException("Password incorrecto", "Password");
+        }
+        usuarioActual = null;
+        administradorActual = admin;
+        centro().registrarAuditoria(admin.getEmail(), "LOGIN_ADMIN", admin.getEmail(), "Inicio de sesión");
+        guardarDatosAutomaticamente();
+        return true;
+    }
+
+    public CentroAdministracion getCentroAdministracion() {
+        return centro();
+    }
+
+    public boolean hayAdministradorLogueado() {
+        return administradorActual != null;
+    }
+
+    public Administrador getAdministradorActual() {
+        return administradorActual;
+    }
+
+    private Administrador exigirAdministrador() throws ValidationException {
+        if (administradorActual == null) {
+            throw new ValidationException("Debe iniciar sesión como administrador");
+        }
+        return administradorActual;
+    }
+
+    private Administrador exigirAdministradorPrincipal() throws ValidationException {
+        Administrador admin = exigirAdministrador();
+        if (!admin.esPrincipal()) {
+            throw new ValidationException("Esta acción solo está permitida al administrador principal");
+        }
+        return admin;
+    }
+
+    private Usuario buscarUsuarioPorEmail(String email) throws ValidationException {
+        return usuarios.stream()
+                .filter(u -> u.getEmail().equalsIgnoreCase(email))
+                .findFirst()
+                .orElseThrow(() -> new ValidationException("No existe un usuario con este email", "Email"));
+    }
+
+    private String exigirMotivo(String motivo) throws ValidationException {
+        String limpio = motivo == null ? "" : motivo.trim();
+        if (limpio.length() < 10) {
+            throw new ValidationException("Indique un motivo de al menos 10 caracteres", "Motivo");
+        }
+        return limpio;
+    }
+
+    public boolean cambiarPasswordAdministrador(String passwordActual, String passwordNueva)
+            throws ValidationException {
+        Administrador admin = exigirAdministrador();
+        if (!admin.validarPassword(passwordActual)) {
+            throw new ValidationException("La contraseña actual es incorrecta", "Contraseña actual");
+        }
+        if (!Validador.validarPassword(passwordNueva)) {
+            throw new ValidationException(
+                    "La contraseña debe tener entre 8 y 14 caracteres y al menos una mayúscula", "Nueva contraseña");
+        }
+        if (admin.validarPassword(passwordNueva)) {
+            throw new ValidationException("La nueva contraseña debe ser diferente a la actual", "Nueva contraseña");
+        }
+        Administrador actualizado = admin.conNuevaPassword(passwordNueva, false);
+        centro().reemplazarAdministrador(actualizado);
+        administradorActual = actualizado;
+        centro().registrarAuditoria(admin.getEmail(), "CAMBIO_PASSWORD_ADMIN", admin.getEmail(), "Contraseña actualizada");
+        guardarDatosAutomaticamente();
+        return true;
+    }
+
+    public List<Administrador> listarAdministradores() throws ValidationException {
+        exigirAdministradorPrincipal();
+        return centro().getAdministradores();
+    }
+
+    public Administrador crearAdministrador(String email, String nombre, String passwordTemporal)
+            throws ValidationException {
+        Administrador principal = exigirAdministradorPrincipal();
+        String emailNormalizado = email == null ? "" : email.trim().toLowerCase();
+        if (!PATRON_EMAIL_ADMIN.matcher(emailNormalizado).matches()) {
+            throw new ValidationException("Email inválido", "Email");
+        }
+        if (!ConfiguracionAdmin.esEmailDeAdministrador(emailNormalizado)) {
+            throw new ValidationException(
+                    "Los administradores deben usar un correo " + ConfiguracionAdmin.DOMINIO_ADMIN, "Email");
+        }
+        if (usuarios.stream().anyMatch(u -> u.getEmail().equalsIgnoreCase(emailNormalizado))) {
+            throw new ValidationException("Este email pertenece a un usuario del sistema", "Email");
+        }
+        if (!Validador.validarNombre(nombre)) {
+            throw new ValidationException("Nombre inválido (solo letras y espacios)", "Nombre");
+        }
+        if (!Validador.validarPassword(passwordTemporal)) {
+            throw new ValidationException(
+                    "La contraseña debe tener entre 8 y 14 caracteres y al menos una mayúscula", "Contraseña");
+        }
+        Administrador nuevo = Administrador.crear(emailNormalizado, nombre.trim(), passwordTemporal,
+                false, true, principal.getEmail());
+        centro().agregarAdministrador(nuevo);
+        centro().registrarAuditoria(principal.getEmail(), "CREAR_ADMIN", emailNormalizado,
+                "Administrador secundario creado");
+        guardarDatosAutomaticamente();
+        return nuevo;
+    }
+
+    public boolean eliminarAdministrador(String email) throws ValidationException {
+        Administrador principal = exigirAdministradorPrincipal();
+        Administrador objetivo = centro().buscarAdministrador(email)
+                .orElseThrow(() -> new ValidationException("No existe ese administrador", "Email"));
+        if (objetivo.esPrincipal()) {
+            throw new ValidationException("No se puede eliminar al administrador principal");
+        }
+        centro().eliminarAdministrador(objetivo.getEmail());
+        centro().registrarAuditoria(principal.getEmail(), "ELIMINAR_ADMIN", objetivo.getEmail(),
+                "Administrador secundario eliminado");
+        guardarDatosAutomaticamente();
+        return true;
+    }
+
+    public List<ResumenUsuario> listarResumenUsuarios() throws ValidationException {
+        exigirAdministradorPrincipal();
+        return usuarios.stream().map(this::resumirUsuario).toList();
+    }
+
+    private int contarEnviados(Usuario usuario) {
+        return (int) usuario.getCorreos().stream()
+                .filter(c -> (c.getEstado() == EstadoCorreo.ENVIADO || c.getEstado() == EstadoCorreo.REENVIADO)
+                        && c.getRemitente().equalsIgnoreCase(usuario.getEmail()))
+                .count();
+    }
+
+    private ResumenUsuario resumirUsuario(Usuario u) {
+        return new ResumenUsuario(
+                u.getEmail(),
+                u.getNombreCompleto(),
+                SeguridadUtil.enmascararCedula(u.getCedula()),
+                Validador.obtenerProvinciaPorCedula(u.getCedula()),
+                SeguridadUtil.enmascararTelefono(u.getTelefono()),
+                u.getFechaRegistro(),
+                contarEnviados(u),
+                u.getContactos().size(),
+                u.getGrupos().size(),
+                u.isSuspendida());
+    }
+
+    public void suspenderUsuario(String email, String motivo) throws ValidationException {
+        Administrador admin = exigirAdministradorPrincipal();
+        String motivoLimpio = exigirMotivo(motivo);
+        Usuario usuario = buscarUsuarioPorEmail(email);
+        usuario.setSuspendida(true);
+        centro().registrarAuditoria(admin.getEmail(), "SUSPENDER_USUARIO",
+                SeguridadUtil.enmascararEmail(usuario.getEmail()), motivoLimpio);
+        guardarDatosAutomaticamente();
+    }
+
+    public void reactivarUsuario(String email) throws ValidationException {
+        Administrador admin = exigirAdministradorPrincipal();
+        Usuario usuario = buscarUsuarioPorEmail(email);
+        usuario.setSuspendida(false);
+        centro().registrarAuditoria(admin.getEmail(), "REACTIVAR_USUARIO",
+                SeguridadUtil.enmascararEmail(usuario.getEmail()), "Cuenta reactivada");
+        guardarDatosAutomaticamente();
+    }
+
+    public void eliminarUsuarioComoAdmin(String email, String motivo) throws ValidationException {
+        Administrador admin = exigirAdministradorPrincipal();
+        String motivoLimpio = exigirMotivo(motivo);
+        Usuario usuario = buscarUsuarioPorEmail(email);
+        usuarios.remove(usuario);
+        centro().anonimizarSolicitudesDe(usuario.getEmail());
+        centro().registrarAuditoria(admin.getEmail(), "ELIMINAR_USUARIO",
+                SeguridadUtil.enmascararEmail(usuario.getEmail()), motivoLimpio);
+        guardarDatosAutomaticamente();
+    }
+
+    private static <T> Map<String, Long> contarPor(Collection<T> elementos, Function<T, String> clasificador) {
+        return elementos.stream().collect(Collectors.groupingBy(
+                e -> Objects.requireNonNullElse(clasificador.apply(e), "Desconocido"),
+                TreeMap::new,
+                Collectors.counting()));
+    }
+
+    public EstadisticasSistema obtenerEstadisticas() throws ValidationException {
+        exigirAdministrador();
+        List<Solicitud> solicitudes = centro().getSolicitudes();
+        return new EstadisticasSistema(
+                usuarios.size(),
+                (int) usuarios.stream().filter(Usuario::isSuspendida).count(),
+                centro().getAdministradores().size(),
+                usuarios.stream().mapToInt(this::contarEnviados).sum(),
+                usuarios.stream().mapToInt(u -> u.getGrupos().size()).sum(),
+                solicitudes.size(),
+                (int) solicitudes.stream().filter(s -> s.getEstado().estaAbierta()).count(),
+                contarPor(usuarios, u -> u.getEmail().substring(u.getEmail().indexOf('@') + 1)),
+                contarPor(usuarios, u -> Validador.obtenerProvinciaPorCedula(u.getCedula())),
+                contarPor(usuarios, u -> u.getGenero().getDescripcion()),
+                contarPor(solicitudes, s -> s.getTipo().getDescripcion()),
+                contarPor(solicitudes, s -> s.getEstado().getDescripcion()));
+    }
+
+    public Solicitud crearSolicitud(TipoSolicitud tipo, String asunto, String descripcion)
+            throws ValidationException {
+        if (!hayUsuarioLogueado()) {
+            throw new ValidationException("Debe iniciar sesión primero");
+        }
+        Solicitud solicitud = centro().agregarSolicitud(usuarioActual.getEmail(), tipo, asunto, descripcion);
+        guardarDatosAutomaticamente();
+        return solicitud;
+    }
+
+    public List<Solicitud> listarMisSolicitudes() {
+        if (!hayUsuarioLogueado()) {
+            return new ArrayList<>();
+        }
+        return new ArrayList<>(centro().solicitudesDe(usuarioActual.getEmail()));
+    }
+
+    public List<Solicitud> listarSolicitudesAdmin() throws ValidationException {
+        exigirAdministrador();
+        return centro().getSolicitudes();
+    }
+
+    public Solicitud responderSolicitud(int id, EstadoSolicitud nuevoEstado, String respuesta)
+            throws ValidationException {
+        Administrador admin = exigirAdministrador();
+        Solicitud actual = centro().buscarSolicitud(id)
+                .orElseThrow(() -> new ValidationException("No existe la solicitud #" + id));
+        if (nuevoEstado == null || nuevoEstado == EstadoSolicitud.PENDIENTE) {
+            throw new ValidationException("Seleccione un estado válido", "Estado");
+        }
+        String texto = respuesta == null ? "" : respuesta.trim();
+        if (texto.length() > CentroAdministracion.DESCRIPCION_MAX) {
+            throw new ValidationException("La respuesta es demasiado larga", "Respuesta");
+        }
+        if (nuevoEstado != EstadoSolicitud.EN_REVISION && texto.length() < 10) {
+            throw new ValidationException("Escriba una respuesta de al menos 10 caracteres para el usuario",
+                    "Respuesta");
+        }
+        String respuestaFinal = texto.isEmpty() ? actual.getRespuesta() : texto;
+        Solicitud actualizada = actual.conRespuesta(nuevoEstado, respuestaFinal, admin.getEmail());
+        centro().reemplazarSolicitud(actualizada);
+        centro().registrarAuditoria(admin.getEmail(), "ATENDER_SOLICITUD", "#" + id, nuevoEstado.getDescripcion());
+        guardarDatosAutomaticamente();
+        return actualizada;
+    }
+
+    public List<RegistroAuditoria> listarAuditoria() throws ValidationException {
+        exigirAdministradorPrincipal();
+        return centro().getAuditoria();
+    }
+
+    private String normalizarEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private Usuario buscarUsuarioOpcional(String emailNormalizado) {
+        return usuarios.stream()
+                .filter(u -> u.getEmail().equalsIgnoreCase(emailNormalizado))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void verificarRecuperacionDisponible(String clave) throws ValidationException {
+        long segundos = controlRecuperacion().segundosRestantes(clave);
+        if (segundos > 0) {
+            throw new ValidationException(
+                    "Demasiados intentos fallidos. Intente de nuevo en " + ((segundos + 59) / 60) + " minuto(s).");
+        }
+    }
+
+    public List<PreguntaSeguridad> obtenerPreguntasRecuperacion(String email) throws ValidationException {
+        String clave = normalizarEmail(email);
+        if (clave.isEmpty()) {
+            throw new ValidationException("Ingrese su email", "Email");
+        }
+        verificarRecuperacionDisponible(clave);
+        Usuario usuario = buscarUsuarioOpcional(clave);
+        List<PreguntaSeguridad> candidatas = new ArrayList<>();
+        for (PreguntaSeguridad pregunta : PreguntaSeguridad.values()) {
+            if (usuario == null || pregunta.estaDisponiblePara(usuario)) {
+                candidatas.add(pregunta);
+            }
+        }
+        Collections.shuffle(candidatas);
+        return new ArrayList<>(candidatas.subList(0, Math.min(2, candidatas.size())));
+    }
+
+    public boolean restablecerPassword(String email, Map<PreguntaSeguridad, String> respuestas,
+                                       String passwordNueva) throws ValidationException {
+        String clave = normalizarEmail(email);
+        verificarRecuperacionDisponible(clave);
+        Usuario usuario = buscarUsuarioOpcional(clave);
+        boolean coincide = usuario != null
+                && respuestas != null
+                && respuestas.size() >= 2
+                && respuestas.entrySet().stream().allMatch(e -> e.getKey().verificar(usuario, e.getValue()));
+        if (!coincide) {
+            controlRecuperacion().registrarFallo(clave);
+            throw new ValidationException("Los datos ingresados no coinciden con los de la cuenta", "Verificación");
+        }
+        if (!Validador.validarPassword(passwordNueva)) {
+            throw new ValidationException(
+                    "La contraseña debe tener entre 8 y 14 caracteres y al menos una mayúscula", "Nueva contraseña");
+        }
+        if (usuario.validarPassword(passwordNueva)) {
+            throw new ValidationException("La nueva contraseña debe ser diferente a la anterior", "Nueva contraseña");
+        }
+        usuario.setPassword(passwordNueva);
+        controlRecuperacion().reiniciar(clave);
+        guardarDatosAutomaticamente();
+        return true;
     }
 }

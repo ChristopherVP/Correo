@@ -365,6 +365,18 @@ public class PanelLogin extends JPanel {
         // Añade el botón al panel
         panelCentral.add(btnRegistrarse, gbcCentral);
 
+        gbcCentral.gridy = 9;
+        gbcCentral.insets = new Insets(0, 10, 10, 10);
+        JButton btnOlvidePassword = new JButton("¿Olvidaste tu contraseña?");
+        btnOlvidePassword.setFont(new Font("Arial", Font.BOLD, 13));
+        btnOlvidePassword.setForeground(new Color(0, 102, 204));
+        btnOlvidePassword.setBackground(Color.WHITE);
+        btnOlvidePassword.setBorderPainted(false);
+        btnOlvidePassword.setFocusPainted(false);
+        btnOlvidePassword.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btnOlvidePassword.addActionListener(e -> abrirRecuperacionPassword());
+        panelCentral.add(btnOlvidePassword, gbcCentral);
+
         // ========== AÑADIR PANEL CENTRAL AL PANEL PRINCIPAL ==========
 
         // Posiciona en columna 0, fila 0
@@ -407,7 +419,7 @@ public class PanelLogin extends JPanel {
                 // Limpia los campos
                 limpiarCampos();
                 // Muestra el panel del menú principal
-                ventanaPrincipal.mostrarPanel("MENU_PRINCIPAL");
+                ventanaPrincipal.mostrarPanel(empresa.hayAdministradorLogueado() ? "ADMIN" : "MENU_PRINCIPAL");
             }
         } catch (ValidationException e) {
             // Incrementa el contador de intentos fallidos
@@ -485,6 +497,11 @@ public class PanelLogin extends JPanel {
             // Cierra la aplicación
             System.exit(0);
         }
+    }
+
+    private void abrirRecuperacionPassword() {
+        new DialogoRecuperarPassword(SwingUtilities.getWindowAncestor(this), empresa).setVisible(true);
+        resetearIntentos();
     }
 
     /**

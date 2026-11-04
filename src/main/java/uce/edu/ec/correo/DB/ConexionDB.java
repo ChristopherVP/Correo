@@ -5,9 +5,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class ConexionDB {
-    private static final String URL = "jdbc:postgresql://localhost:5432/correo";
-    private static final String USER = "postgres";
-    private static final String PASSWORD = "DB_Password";
+    private static final String URL = valorEntorno("ECUMAIL_DB_URL", "jdbc:postgresql://localhost:5432/correo");
+    private static final String USER = valorEntorno("ECUMAIL_DB_USER", "postgres");
+    private static final String PASSWORD = valorEntorno("ECUMAIL_DB_PASSWORD", "DB_Password");
+
+    private static String valorEntorno(String nombre, String valorPorDefecto) {
+        String valor = System.getenv(nombre);
+        return valor == null || valor.isBlank() ? valorPorDefecto : valor;
+    }
 
     private ConexionDB() {}
 
@@ -19,7 +24,8 @@ public class ConexionDB {
 /*
 
 	DROP TABLE IF EXISTS archivos_adjuntos, correo_usuario, correo_destinatarios, correos,
-    mensajes_grupo, grupo_miembros, grupos, contactos, usuarios CASCADE;
+    mensajes_grupo, grupo_miembros, grupos, contactos, usuarios,
+    administradores, solicitudes, auditoria_admin CASCADE;
 
 CREATE TABLE usuarios (
     email            VARCHAR(150) PRIMARY KEY,
@@ -29,7 +35,9 @@ CREATE TABLE usuarios (
     password         VARCHAR(14)  NOT NULL,
     telefono         VARCHAR(10),
     fecha_nacimiento DATE,
-    genero           VARCHAR(15)  NOT NULL
+    genero           VARCHAR(15)  NOT NULL,
+    fecha_registro   TIMESTAMP,
+    suspendida       BOOLEAN      NOT NULL DEFAULT FALSE
 );
 
 -- Agenda privada de cada usuario
@@ -107,13 +115,72 @@ CREATE TABLE archivos_adjuntos (
     CHECK (correo_id IS NOT NULL OR mensaje_id IS NOT NULL)
 );
 
+CREATE TABLE administradores (
+    email                     VARCHAR(150) PRIMARY KEY,
+    nombre                    VARCHAR(150) NOT NULL,
+    password_hash             VARCHAR(100) NOT NULL,
+    salt                      VARCHAR(40)  NOT NULL,
+    es_principal              BOOLEAN      NOT NULL DEFAULT FALSE,
+    cambio_password_pendiente BOOLEAN      NOT NULL DEFAULT FALSE,
+    fecha_creacion            TIMESTAMP    NOT NULL,
+    creado_por                VARCHAR(150)
+);
+
+CREATE TABLE solicitudes (
+    id              INT PRIMARY KEY,
+    usuario_email   VARCHAR(150) NOT NULL,
+    tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('QUEJA','REPORTE_TECNICO','RECOMENDACION')),
+    asunto          VARCHAR(100) NOT NULL,
+    descripcion     TEXT         NOT NULL,
+    estado          VARCHAR(15)  NOT NULL CHECK (estado IN ('PENDIENTE','EN_REVISION','RESUELTA','RECHAZADA')),
+    fecha_creacion  TIMESTAMP    NOT NULL,
+    respuesta       TEXT,
+    atendida_por    VARCHAR(150),
+    fecha_respuesta TIMESTAMP
+);
+
+CREATE TABLE auditoria_admin (
+    id          SERIAL PRIMARY KEY,
+    fecha       TIMESTAMP    NOT NULL,
+    admin_email VARCHAR(150) NOT NULL,
+    accion      VARCHAR(40)  NOT NULL,
+    objetivo    VARCHAR(200),
+    detalle     TEXT
+);
+
+CREATE INDEX idx_solicitudes_estado ON solicitudes(estado);
+CREATE INDEX idx_auditoria_fecha ON auditoria_admin(fecha);
 CREATE INDEX idx_dest_email ON correo_destinatarios(email);
 CREATE INDEX idx_miembros_email ON grupo_miembros(email);
+
+CREATE OR REPLACE VIEW v_resumen_usuarios AS
+SELECT u.email,
+       u.nombre || ' ' || u.apellido AS nombre_completo,
+       split_part(u.email, '@', 2)   AS dominio,
+       u.fecha_registro,
+       u.suspendida,
+       (SELECT COUNT(*) FROM correos c WHERE c.remitente = u.email AND c.estado IN ('ENVIADO','REENVIADO')) AS correos_enviados,
+       (SELECT COUNT(*) FROM contactos ct WHERE ct.usuario_email = u.email) AS contactos,
+       (SELECT COUNT(*) FROM grupos g WHERE g.creador_email = u.email) AS grupos_creados
+FROM usuarios u;
+
+CREATE OR REPLACE VIEW v_solicitudes_resumen AS
+SELECT tipo, estado, COUNT(*) AS total,
+       ROUND(AVG(EXTRACT(EPOCH FROM (fecha_respuesta - fecha_creacion)) / 3600)::numeric, 1) AS horas_promedio_respuesta
+FROM solicitudes
+GROUP BY tipo, estado;
+
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_registro TIMESTAMP;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS suspendida BOOLEAN NOT NULL DEFAULT FALSE;
 
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
 
 SELECT * FROM usuarios;
 SELECT * FROM correos;
 SELECT * FROM grupos;
+SELECT * FROM v_resumen_usuarios;
+SELECT * FROM v_solicitudes_resumen;
+SELECT * FROM solicitudes ORDER BY fecha_creacion DESC;
+SELECT * FROM auditoria_admin ORDER BY fecha DESC;
 
  */

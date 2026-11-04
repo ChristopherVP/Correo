@@ -13,10 +13,15 @@ public class PersistenciaDB {
             con.setAutoCommit(false);
             try {
                 try (Statement st = con.createStatement()) {
-                    st.execute("TRUNCATE usuarios, correos, grupos RESTART IDENTITY CASCADE");
+                    st.execute("TRUNCATE usuarios, correos, grupos, administradores, solicitudes, auditoria_admin "
+                            + "RESTART IDENTITY CASCADE");
                 }
                 // 1) Usuarios primero (las demás tablas dependen de ellos)
                 for (Usuario u : empresa.listarUsuarios()) insertarUsuario(con, u);
+                CentroAdministracion centro = empresa.getCentroAdministracion();
+                for (Administrador a : centro.getAdministradores()) insertarAdministrador(con, a);
+                for (Solicitud s : centro.getSolicitudes()) insertarSolicitud(con, s);
+                for (RegistroAuditoria r : centro.getAuditoria()) insertarAuditoria(con, r);
                 // 2) Contenido compartido: una sola vez
                 for (Usuario u : empresa.listarUsuarios()) {
                     for (Contacto c : u.getContactos()) insertarContacto(con, u.getEmail(), c);
@@ -38,8 +43,8 @@ public class PersistenciaDB {
 
     private static void insertarUsuario(Connection con, Usuario u) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement(
-                "INSERT INTO usuarios (email,cedula,nombre,apellido,password,telefono,fecha_nacimiento,genero) " +
-                        "VALUES (?,?,?,?,?,?,?,?)")) {
+                "INSERT INTO usuarios (email,cedula,nombre,apellido,password,telefono,fecha_nacimiento,genero," +
+                        "fecha_registro,suspendida) VALUES (?,?,?,?,?,?,?,?,?,?)")) {
             ps.setString(1, u.getEmail());
             ps.setString(2, u.getCedula());
             ps.setString(3, u.getNombre());
@@ -48,6 +53,54 @@ public class PersistenciaDB {
             ps.setString(6, u.getTelefono());
             ps.setDate(7, u.getFechaNacimiento() != null ? Date.valueOf(u.getFechaNacimiento()) : null);
             ps.setString(8, u.getGenero().name());
+            ps.setTimestamp(9, ts(u.getFechaRegistro()));
+            ps.setBoolean(10, u.isSuspendida());
+            ps.executeUpdate();
+        }
+    }
+
+    private static void insertarAdministrador(Connection con, Administrador a) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "INSERT INTO administradores (email,nombre,password_hash,salt,es_principal," +
+                        "cambio_password_pendiente,fecha_creacion,creado_por) VALUES (?,?,?,?,?,?,?,?)")) {
+            ps.setString(1, a.getEmail());
+            ps.setString(2, a.getNombre());
+            ps.setString(3, a.getPasswordHash());
+            ps.setString(4, a.getSalt());
+            ps.setBoolean(5, a.esPrincipal());
+            ps.setBoolean(6, a.isCambioPasswordPendiente());
+            ps.setTimestamp(7, ts(a.getFechaCreacion()));
+            ps.setString(8, a.getCreadoPor());
+            ps.executeUpdate();
+        }
+    }
+
+    private static void insertarSolicitud(Connection con, Solicitud s) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "INSERT INTO solicitudes (id,usuario_email,tipo,asunto,descripcion,estado,fecha_creacion," +
+                        "respuesta,atendida_por,fecha_respuesta) VALUES (?,?,?,?,?,?,?,?,?,?)")) {
+            ps.setInt(1, s.getId());
+            ps.setString(2, s.getEmailUsuario());
+            ps.setString(3, s.getTipo().name());
+            ps.setString(4, s.getAsunto());
+            ps.setString(5, s.getDescripcion());
+            ps.setString(6, s.getEstado().name());
+            ps.setTimestamp(7, ts(s.getFechaCreacion()));
+            ps.setString(8, s.getRespuesta());
+            ps.setString(9, s.getAtendidaPor());
+            ps.setTimestamp(10, ts(s.getFechaRespuesta()));
+            ps.executeUpdate();
+        }
+    }
+
+    private static void insertarAuditoria(Connection con, RegistroAuditoria r) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "INSERT INTO auditoria_admin (fecha,admin_email,accion,objetivo,detalle) VALUES (?,?,?,?,?)")) {
+            ps.setTimestamp(1, ts(r.getFecha()));
+            ps.setString(2, r.getEmailAdmin());
+            ps.setString(3, r.getAccion());
+            ps.setString(4, r.getObjetivo());
+            ps.setString(5, r.getDetalle());
             ps.executeUpdate();
         }
     }

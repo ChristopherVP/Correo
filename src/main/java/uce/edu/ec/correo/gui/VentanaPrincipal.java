@@ -2,6 +2,7 @@ package uce.edu.ec.correo.gui;
 
 import uce.edu.ec.correo.dominio.EmpresaCorreo;
 import uce.edu.ec.correo.util.IconoUtils;
+import uce.edu.ec.correo.util.SeguridadUtil;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -30,6 +31,7 @@ public class VentanaPrincipal extends JFrame {
     private PanelLogin panelLogin;
     private PanelRegistro panelRegistro;
     private PanelMenuPrincipal panelMenuPrincipal;
+    private PanelAdmin panelAdmin;
 
     /**
      * Constructor de la ventana principal.
@@ -83,6 +85,7 @@ public class VentanaPrincipal extends JFrame {
         panelRegistro = new PanelRegistro(this, empresa);
         // Instancia el panel del menú principal
         panelMenuPrincipal = new PanelMenuPrincipal(this, empresa);
+        panelAdmin = new PanelAdmin(this, empresa);
 
         // Agrega el panel de login al contenedor con el identificador "LOGIN"
         contenedorPrincipal.add(panelLogin, "LOGIN");
@@ -90,6 +93,7 @@ public class VentanaPrincipal extends JFrame {
         contenedorPrincipal.add(panelRegistro, "REGISTRO");
         // Agrega el panel de menú principal con el identificador "MENU_PRINCIPAL"
         contenedorPrincipal.add(panelMenuPrincipal, "MENU_PRINCIPAL");
+        contenedorPrincipal.add(panelAdmin, "ADMIN");
 
         // Agrega el contenedor principal a la ventana
         add(contenedorPrincipal);
@@ -187,10 +191,9 @@ public class VentanaPrincipal extends JFrame {
                 // Escribe la contraseña oculta (reemplazada por asteriscos)
                 writer.println("Contraseña:          " + generarAsteriscos(usuario.getPassword().length()));
                 // Escribe la cédula del usuario
-                writer.println("Cédula:              " + usuario.getCedula());
+                writer.println("Cédula:              " + SeguridadUtil.enmascararCedula(usuario.getCedula()));
                 // Escribe el teléfono (o "No registrado" si no hay teléfono)
-                writer.println("Teléfono:            " + (usuario.getTelefono() != null && !usuario.getTelefono().isEmpty()
-                        ? usuario.getTelefono() : "No registrado"));
+                writer.println("Teléfono:            " + SeguridadUtil.enmascararTelefono(usuario.getTelefono()));
                 // Escribe la fecha de nacimiento formateada (o "N/A" si no existe)
                 writer.println("Fecha Nacimiento:    " + (usuario.getFechaNacimiento() != null ?
                         usuario.getFechaNacimiento().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "N/A"));
@@ -248,6 +251,8 @@ public class VentanaPrincipal extends JFrame {
         if (nombrePanel.equals("MENU_PRINCIPAL")) {
             // Actualiza el mensaje de bienvenida con el nombre del usuario actual
             panelMenuPrincipal.actualizarBienvenida();
+        } else if (nombrePanel.equals("ADMIN")) {
+            panelAdmin.actualizar();
         }
     }
 
