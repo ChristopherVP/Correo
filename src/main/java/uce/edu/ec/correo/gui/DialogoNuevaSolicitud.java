@@ -15,7 +15,8 @@ import java.awt.*;
 public class DialogoNuevaSolicitud extends JDialog {
 
     private final EmpresaCorreo empresa;
-    private final JComboBox<TipoSolicitud> cmbTipo = new JComboBox<>(TipoSolicitud.values());
+    private final JComboBox<TipoSolicitud> cmbTipo = new JComboBox<>(new TipoSolicitud[]{
+            TipoSolicitud.QUEJA, TipoSolicitud.REPORTE_TECNICO, TipoSolicitud.RECOMENDACION});
     private final JTextField txtAsunto = new JTextField(30);
     private final JTextArea txtDescripcion = new JTextArea(8, 30);
     private final JLabel lblContador = new JLabel();

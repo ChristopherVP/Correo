@@ -1005,6 +1005,8 @@ public class DialogoNuevoCorreo extends JDialog {
                 return;
             }
 
+            empresa.validarDestinatariosExisten(correo);
+
             // Intenta guardar el correo
             if (empresa.guardarCorreo(correo)) {
                 // Intenta enviar el correo

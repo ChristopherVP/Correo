@@ -34,7 +34,7 @@ public class PanelRegistro extends JPanel {
     private JToggleButton btnMostrarPassword1; // Botón para mostrar/ocultar la contraseña principal
     private JToggleButton btnMostrarPassword2; // Botón para mostrar/ocultar la confirmación de contraseña
     private JTextField txtTelefono; // Campo para el número de teléfono celular
-    private JTextField txtFechaNacimiento; // Campo para la fecha de nacimiento (formato dd/mm/aaaa)
+    private SelectorFecha selectorFechaNacimiento; // Campo para la fecha de nacimiento (formato dd/mm/aaaa)
     private JComboBox<Genero> cmbGenero; // Lista desplegable para seleccionar el género
     private JButton btnRegistrar; // Botón para enviar el formulario de registro
     private JButton btnVolver; // Botón para volver al panel de login
@@ -469,61 +469,12 @@ public class PanelRegistro extends JPanel {
         JPanel panelFecha = new JPanel(new BorderLayout(5, 0));
         panelFecha.setBackground(Color.WHITE);
 
-        txtFechaNacimiento = new JTextField(15);
-        txtFechaNacimiento.setFont(new Font("Arial", Font.PLAIN, 14));
-        // Agrega validación y formateo automático de fecha
-        txtFechaNacimiento.addKeyListener(new java.awt.event.KeyAdapter() {
-            // Variable para controlar si se está eliminando texto
-            private boolean eliminando = false;
-
-            /**
-             * Detecta cuando se presiona la tecla de retroceso.
-             */
-            public void keyPressed(java.awt.event.KeyEvent evt) {
-                eliminando = (evt.getKeyCode() == java.awt.event.KeyEvent.VK_BACK_SPACE);
-            }
-
-            /**
-             * Método que formatea automáticamente la fecha con barras (/).
-             * Formato: dd/mm/aaaa
-             */
-            public void keyReleased(java.awt.event.KeyEvent evt) {
-                if (eliminando) return; // No formatea si se está borrando
-                String texto = txtFechaNacimiento.getText().replace("/", ""); // Remueve barras existentes
-                StringBuilder resultado = new StringBuilder();
-                // Itera sobre los primeros 8 dígitos (ddmmaaaa)
-                for (int i = 0; i < texto.length() && i < 8; i++) {
-                    // Agrega barra después del día (posición 2) y mes (posición 4)
-                    if (i == 2 || i == 4) resultado.append("/");
-                    resultado.append(texto.charAt(i)); // Agrega el dígito
-                }
-                // Actualiza el campo con el texto formateado
-                txtFechaNacimiento.setText(resultado.toString());
-                // Mueve el cursor al final
-                txtFechaNacimiento.setCaretPosition(txtFechaNacimiento.getText().length());
-            }
-
-            /**
-             * Método que valida que solo se ingresen números.
-             */
-            public void keyTyped(java.awt.event.KeyEvent evt) {
-                char c = evt.getKeyChar();
-                // Solo permite dígitos y retroceso
-                if (!Character.isDigit(c) && c != java.awt.event.KeyEvent.VK_BACK_SPACE) {
-                    evt.consume();
-                    return;
-                }
-                // Limita a 8 dígitos (sin contar las barras)
-                String textoActual = txtFechaNacimiento.getText().replace("/", "");
-                if (textoActual.length() >= 8 && c != java.awt.event.KeyEvent.VK_BACK_SPACE) {
-                    evt.consume();
-                }
-            }
-        });
-        panelFecha.add(txtFechaNacimiento, BorderLayout.CENTER);
+        int anioActual = java.time.LocalDate.now().getYear();
+        selectorFechaNacimiento = new SelectorFecha(anioActual - 100, anioActual);
+        panelFecha.add(selectorFechaNacimiento, BorderLayout.CENTER);
 
         // Agrega una etiqueta con el formato esperado
-        JLabel lblFormatoFecha = new JLabel("(dd/mm/aaaa)");
+        JLabel lblFormatoFecha = new JLabel("(escriba o elija)");
         lblFormatoFecha.setFont(new Font("Arial", Font.ITALIC, 11));
         lblFormatoFecha.setForeground(Color.GRAY);
         panelFecha.add(lblFormatoFecha, BorderLayout.EAST);
@@ -654,7 +605,7 @@ public class PanelRegistro extends JPanel {
             String password = new String(txtPassword.getPassword());
             String confirmarPassword = new String(txtConfirmarPassword.getPassword());
             String telefono = txtTelefono.getText().trim();
-            String fechaTexto = txtFechaNacimiento.getText().trim();
+            String fechaTexto = selectorFechaNacimiento.getFechaTexto();
             // Obtiene el género seleccionado (puede ser null)
             Genero genero = (Genero) cmbGenero.getSelectedItem();
 
@@ -748,7 +699,7 @@ public class PanelRegistro extends JPanel {
                                 "Formato: dd/mm/aaaa (ejemplo: 15/03/2000)",
                         "Campo obligatorio",
                         JOptionPane.WARNING_MESSAGE);
-                txtFechaNacimiento.requestFocus();
+                selectorFechaNacimiento.requestFocus();
                 return;
             }
 
@@ -780,7 +731,7 @@ public class PanelRegistro extends JPanel {
                                 "Ejemplo: 15/03/2000",
                         "Error de validación",
                         JOptionPane.ERROR_MESSAGE);
-                txtFechaNacimiento.requestFocus();
+                selectorFechaNacimiento.requestFocus();
                 return;
             }
 
@@ -862,7 +813,7 @@ public class PanelRegistro extends JPanel {
         txtPassword.setText("");
         txtConfirmarPassword.setText("");
         txtTelefono.setText("");
-        txtFechaNacimiento.setText("");
+        selectorFechaNacimiento.limpiar();
         // Restaura el género a la opción por defecto (nulo)
         cmbGenero.setSelectedIndex(0);
         // Deselecciona los botones de mostrar contraseña

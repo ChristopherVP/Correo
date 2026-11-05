@@ -44,7 +44,7 @@ public class PersistenciaDB {
     private static void insertarUsuario(Connection con, Usuario u) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement(
                 "INSERT INTO usuarios (email,cedula,nombre,apellido,password,telefono,fecha_nacimiento,genero," +
-                        "fecha_registro,suspendida) VALUES (?,?,?,?,?,?,?,?,?,?)")) {
+                        "fecha_registro,suspendida,motivo_suspension,fecha_suspension) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")) {
             ps.setString(1, u.getEmail());
             ps.setString(2, u.getCedula());
             ps.setString(3, u.getNombre());
@@ -55,6 +55,8 @@ public class PersistenciaDB {
             ps.setString(8, u.getGenero().name());
             ps.setTimestamp(9, ts(u.getFechaRegistro()));
             ps.setBoolean(10, u.isSuspendida());
+            ps.setString(11, u.getMotivoSuspension());
+            ps.setTimestamp(12, ts(u.getFechaSuspension()));
             ps.executeUpdate();
         }
     }

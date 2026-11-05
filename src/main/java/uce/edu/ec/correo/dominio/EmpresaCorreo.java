@@ -1,12 +1,14 @@
 package uce.edu.ec.correo.dominio;
 
 import uce.edu.ec.correo.util.ConfiguracionAdmin;
+import uce.edu.ec.correo.util.CuentaSuspendidaException;
 import uce.edu.ec.correo.util.ControlIntentos;
 import uce.edu.ec.correo.util.SeguridadUtil;
 import uce.edu.ec.correo.util.Validador;
 import uce.edu.ec.correo.util.ValidationException;
 import java.time.LocalDateTime;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,6 +33,8 @@ import java.io.*;
  *
  * Utiliza serialización de Java para guardar y cargar datos del sistema.
  *
+ * @author Sistema de Correo UCE
+ * @version 1.0
  */
 public class EmpresaCorreo implements Serializable {
 
@@ -300,8 +304,7 @@ public class EmpresaCorreo implements Serializable {
             if (u.getEmail().equalsIgnoreCase(email)) {
                 if (u.validarPassword(password)) {
                     if (u.isSuspendida()) {
-                        throw new ValidationException(
-                                "Su cuenta está suspendida. Comuníquese con el soporte de EcuMail.", "Email");
+                        throw new CuentaSuspendidaException(u.getEmail());
                     }
                     usuarioActual = u;
                     administradorActual = null;
@@ -773,6 +776,7 @@ public class EmpresaCorreo implements Serializable {
         if (correo.getEstado() == EstadoCorreo.ENVIADO) {
             throw new ValidationException("El correo ya fue enviado");
         }
+        validarDestinatariosExisten(correo);
         if (!correo.getRemitente().equals(usuarioActual.getEmail())) {
             throw new ValidationException("Solo puede enviar correos propios");
         }
@@ -792,6 +796,9 @@ public class EmpresaCorreo implements Serializable {
         }
         if (!Validador.validarEmail(nuevoDestinatario)) {
             throw new ValidationException("Email del destinatario inválido", "Destinatario");
+        }
+        if (buscarUsuarioOpcional(normalizarEmail(nuevoDestinatario)) == null) {
+            throw new ValidationException("El usuario " + nuevoDestinatario + " no existe", "Destinatario");
         }
         Correo correoReenviado = correoOriginal.clonarParaReenvio(usuarioActual.getEmail());
         correoReenviado.agregarDestinatario(nuevoDestinatario.toLowerCase());
@@ -899,14 +906,14 @@ public class EmpresaCorreo implements Serializable {
 
     private boolean iniciarSesionAdministrador(Administrador admin, String password) throws ValidationException {
         if (!admin.validarPassword(password)) {
-            centro().registrarAuditoria(admin.getEmail(), "LOGIN_ADMIN_FALLIDO", admin.getEmail(),
+            centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.LOGIN_ADMIN_FALLIDO, admin.getEmail(),
                     "Contraseña incorrecta");
             guardarDatosAutomaticamente();
             throw new ValidationException("Password incorrecto", "Password");
         }
         usuarioActual = null;
         administradorActual = admin;
-        centro().registrarAuditoria(admin.getEmail(), "LOGIN_ADMIN", admin.getEmail(), "Inicio de sesión");
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.LOGIN_ADMIN, admin.getEmail(), "Inicio de sesión");
         guardarDatosAutomaticamente();
         return true;
     }
@@ -969,7 +976,7 @@ public class EmpresaCorreo implements Serializable {
         Administrador actualizado = admin.conNuevaPassword(passwordNueva, false);
         centro().reemplazarAdministrador(actualizado);
         administradorActual = actualizado;
-        centro().registrarAuditoria(admin.getEmail(), "CAMBIO_PASSWORD_ADMIN", admin.getEmail(), "Contraseña actualizada");
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.CAMBIO_PASSWORD_ADMIN, admin.getEmail(), "Contraseña actualizada");
         guardarDatosAutomaticamente();
         return true;
     }
@@ -1003,7 +1010,7 @@ public class EmpresaCorreo implements Serializable {
         Administrador nuevo = Administrador.crear(emailNormalizado, nombre.trim(), passwordTemporal,
                 false, true, principal.getEmail());
         centro().agregarAdministrador(nuevo);
-        centro().registrarAuditoria(principal.getEmail(), "CREAR_ADMIN", emailNormalizado,
+        centro().registrarAuditoria(principal.getEmail(), AccionAuditoria.CREAR_ADMIN, emailNormalizado,
                 "Administrador secundario creado");
         guardarDatosAutomaticamente();
         return nuevo;
@@ -1017,14 +1024,14 @@ public class EmpresaCorreo implements Serializable {
             throw new ValidationException("No se puede eliminar al administrador principal");
         }
         centro().eliminarAdministrador(objetivo.getEmail());
-        centro().registrarAuditoria(principal.getEmail(), "ELIMINAR_ADMIN", objetivo.getEmail(),
+        centro().registrarAuditoria(principal.getEmail(), AccionAuditoria.ELIMINAR_ADMIN, objetivo.getEmail(),
                 "Administrador secundario eliminado");
         guardarDatosAutomaticamente();
         return true;
     }
 
     public List<ResumenUsuario> listarResumenUsuarios() throws ValidationException {
-        exigirAdministradorPrincipal();
+        exigirAdministrador();
         return usuarios.stream().map(this::resumirUsuario).toList();
     }
 
@@ -1050,31 +1057,39 @@ public class EmpresaCorreo implements Serializable {
     }
 
     public void suspenderUsuario(String email, String motivo) throws ValidationException {
-        Administrador admin = exigirAdministradorPrincipal();
+        Administrador admin = exigirAdministrador();
         String motivoLimpio = exigirMotivo(motivo);
         Usuario usuario = buscarUsuarioPorEmail(email);
-        usuario.setSuspendida(true);
-        centro().registrarAuditoria(admin.getEmail(), "SUSPENDER_USUARIO",
+        usuario.suspender(motivoLimpio);
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.SUSPENDER_USUARIO,
                 SeguridadUtil.enmascararEmail(usuario.getEmail()), motivoLimpio);
         guardarDatosAutomaticamente();
     }
 
     public void reactivarUsuario(String email) throws ValidationException {
-        Administrador admin = exigirAdministradorPrincipal();
+        Administrador admin = exigirAdministrador();
         Usuario usuario = buscarUsuarioPorEmail(email);
-        usuario.setSuspendida(false);
-        centro().registrarAuditoria(admin.getEmail(), "REACTIVAR_USUARIO",
+        usuario.reactivar();
+        for (Solicitud apelacion : centro().solicitudesDe(usuario.getEmail())) {
+            if (apelacion.getTipo() == TipoSolicitud.APELACION && apelacion.getEstado().estaAbierta()) {
+                centro().reemplazarSolicitud(apelacion.conRespuesta(EstadoSolicitud.RESUELTA,
+                        "Su cuenta fue reactivada.", admin.getEmail()));
+                centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.ATENDER_SOLICITUD,
+                        "#" + apelacion.getId(), EstadoSolicitud.RESUELTA.name());
+            }
+        }
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.REACTIVAR_USUARIO,
                 SeguridadUtil.enmascararEmail(usuario.getEmail()), "Cuenta reactivada");
         guardarDatosAutomaticamente();
     }
 
     public void eliminarUsuarioComoAdmin(String email, String motivo) throws ValidationException {
-        Administrador admin = exigirAdministradorPrincipal();
+        Administrador admin = exigirAdministrador();
         String motivoLimpio = exigirMotivo(motivo);
         Usuario usuario = buscarUsuarioPorEmail(email);
         usuarios.remove(usuario);
         centro().anonimizarSolicitudesDe(usuario.getEmail());
-        centro().registrarAuditoria(admin.getEmail(), "ELIMINAR_USUARIO",
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.ELIMINAR_USUARIO,
                 SeguridadUtil.enmascararEmail(usuario.getEmail()), motivoLimpio);
         guardarDatosAutomaticamente();
     }
@@ -1108,6 +1123,9 @@ public class EmpresaCorreo implements Serializable {
             throws ValidationException {
         if (!hayUsuarioLogueado()) {
             throw new ValidationException("Debe iniciar sesión primero");
+        }
+        if (tipo == TipoSolicitud.APELACION) {
+            throw new ValidationException("Tipo de solicitud no permitido", "Tipo");
         }
         Solicitud solicitud = centro().agregarSolicitud(usuarioActual.getEmail(), tipo, asunto, descripcion);
         guardarDatosAutomaticamente();
@@ -1145,7 +1163,7 @@ public class EmpresaCorreo implements Serializable {
         String respuestaFinal = texto.isEmpty() ? actual.getRespuesta() : texto;
         Solicitud actualizada = actual.conRespuesta(nuevoEstado, respuestaFinal, admin.getEmail());
         centro().reemplazarSolicitud(actualizada);
-        centro().registrarAuditoria(admin.getEmail(), "ATENDER_SOLICITUD", "#" + id, nuevoEstado.getDescripcion());
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.ATENDER_SOLICITUD, "#" + id, nuevoEstado.name());
         guardarDatosAutomaticamente();
         return actualizada;
     }
@@ -1215,5 +1233,79 @@ public class EmpresaCorreo implements Serializable {
         controlRecuperacion().reiniciar(clave);
         guardarDatosAutomaticamente();
         return true;
+    }
+
+    public void validarDestinatariosExisten(Correo correo) throws ValidationException {
+        List<String> inexistentes = new ArrayList<>();
+        List<String> todos = new ArrayList<>(correo.getDestinatarios());
+        todos.addAll(correo.getCc());
+        todos.addAll(correo.getCco());
+        for (String email : todos) {
+            if (buscarUsuarioOpcional(normalizarEmail(email)) == null && !inexistentes.contains(email)) {
+                inexistentes.add(email);
+            }
+        }
+        if (inexistentes.size() == 1) {
+            throw new ValidationException("El usuario " + inexistentes.get(0) + " no existe", "Destinatarios");
+        }
+        if (!inexistentes.isEmpty()) {
+            throw new ValidationException(
+                    "Los siguientes usuarios no existen: " + String.join(", ", inexistentes), "Destinatarios");
+        }
+    }
+
+    private Usuario verificarCuentaSuspendida(String email, String password) throws ValidationException {
+        String clave = "apelacion:" + normalizarEmail(email);
+        verificarRecuperacionDisponible(clave);
+        Usuario usuario = buscarUsuarioOpcional(normalizarEmail(email));
+        if (usuario == null || !usuario.validarPassword(password) || !usuario.isSuspendida()) {
+            controlRecuperacion().registrarFallo(clave);
+            throw new ValidationException("No se pudo verificar la cuenta o ya no está suspendida", "Email");
+        }
+        controlRecuperacion().reiniciar(clave);
+        return usuario;
+    }
+
+    public InfoSuspension consultarSuspension(String email, String password) throws ValidationException {
+        Usuario usuario = verificarCuentaSuspendida(email, password);
+        List<Solicitud> apelaciones = centro().solicitudesDe(usuario.getEmail()).stream()
+                .filter(s -> s.getTipo() == TipoSolicitud.APELACION)
+                .toList();
+        return new InfoSuspension(usuario.getMotivoSuspension(), usuario.getFechaSuspension(), apelaciones);
+    }
+
+    public Solicitud enviarApelacion(String email, String password, String descripcion) throws ValidationException {
+        Usuario usuario = verificarCuentaSuspendida(email, password);
+        boolean hayAbierta = centro().solicitudesDe(usuario.getEmail()).stream()
+                .anyMatch(s -> s.getTipo() == TipoSolicitud.APELACION && s.getEstado().estaAbierta());
+        if (hayAbierta) {
+            throw new ValidationException("Ya tiene una apelación en curso. Espere la respuesta del soporte.");
+        }
+        Solicitud apelacion = centro().agregarSolicitud(usuario.getEmail(), TipoSolicitud.APELACION,
+                "Apelación de cuenta suspendida", descripcion);
+        guardarDatosAutomaticamente();
+        return apelacion;
+    }
+
+    public List<TipoReporte> tiposDeReportePermitidos() throws ValidationException {
+        Administrador admin = exigirAdministrador();
+        return java.util.Arrays.stream(TipoReporte.values()).filter(t -> t.estaPermitidoPara(admin)).toList();
+    }
+
+    public List<HojaReporte> generarReporte(TipoReporte tipo, PeriodoReporte periodo, LocalDate referencia)
+            throws ValidationException {
+        Administrador admin = exigirAdministrador();
+        if (tipo == null || periodo == null || referencia == null) {
+            throw new ValidationException("Seleccione el tipo de reporte, el periodo y la fecha");
+        }
+        if (!tipo.estaPermitidoPara(admin)) {
+            throw new ValidationException("Este reporte solo está permitido al administrador principal");
+        }
+        RangoFechas rango = periodo.rango(referencia);
+        List<HojaReporte> hojas = GeneradorReportes.generar(tipo, rango, admin, List.copyOf(usuarios), centro());
+        centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.EXPORTAR_REPORTE, tipo.name(),
+                periodo.name() + " — " + rango.etiqueta());
+        guardarDatosAutomaticamente();
+        return hojas;
     }
 }

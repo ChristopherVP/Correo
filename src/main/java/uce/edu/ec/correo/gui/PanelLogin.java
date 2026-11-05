@@ -2,6 +2,7 @@ package uce.edu.ec.correo.gui;
 
 import uce.edu.ec.correo.dominio.EmpresaCorreo;
 import uce.edu.ec.correo.util.IconoUtils;
+import uce.edu.ec.correo.util.CuentaSuspendidaException;
 import uce.edu.ec.correo.util.ValidationException;
 import javax.swing.*;
 import java.awt.*;
@@ -421,6 +422,10 @@ public class PanelLogin extends JPanel {
                 // Muestra el panel del menú principal
                 ventanaPrincipal.mostrarPanel(empresa.hayAdministradorLogueado() ? "ADMIN" : "MENU_PRINCIPAL");
             }
+        } catch (CuentaSuspendidaException e) {
+            limpiarCampos();
+            new DialogoApelacionSuspension(SwingUtilities.getWindowAncestor(this), empresa, email, password)
+                    .mostrar();
         } catch (ValidationException e) {
             // Incrementa el contador de intentos fallidos
             intentosFallidos++;

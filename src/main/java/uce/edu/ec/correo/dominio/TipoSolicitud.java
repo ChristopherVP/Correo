@@ -3,7 +3,8 @@ package uce.edu.ec.correo.dominio;
 public enum TipoSolicitud {
     QUEJA("Queja"),
     REPORTE_TECNICO("Reporte técnico"),
-    RECOMENDACION("Recomendación de mejora");
+    RECOMENDACION("Recomendación de mejora"),
+    APELACION("Apelación de cuenta suspendida");
 
     private final String descripcion;
 

@@ -39,10 +39,14 @@ public class PanelAdmin extends JPanel {
 
         JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         acciones.setOpaque(false);
+        JButton btnExportar = EstiloUI.boton("Exportar reportes");
+        btnExportar.addActionListener(e ->
+                new DialogoExportarReporte(SwingUtilities.getWindowAncestor(this), empresa).setVisible(true));
         JButton btnPassword = EstiloUI.boton("Cambiar contraseña");
         btnPassword.addActionListener(e -> solicitarCambioPassword());
         JButton btnSalir = EstiloUI.botonPeligro("Cerrar sesión");
         btnSalir.addActionListener(e -> cerrarSesion(true));
+        acciones.add(btnExportar);
         acciones.add(btnPassword);
         acciones.add(btnSalir);
         encabezado.add(acciones, BorderLayout.EAST);
@@ -65,8 +69,8 @@ public class PanelAdmin extends JPanel {
         pestanas.removeAll();
         pestanas.addTab("Resumen", new PanelAdminResumen(empresa));
         pestanas.addTab("Centro de Solicitudes y Mejoras", new PanelAdminSolicitudes(empresa));
+        pestanas.addTab("Usuarios", new PanelAdminUsuarios(empresa));
         if (admin.esPrincipal()) {
-            pestanas.addTab("Usuarios", new PanelAdminUsuarios(empresa));
             pestanas.addTab("Administradores", new PanelAdminAdministradores(empresa));
             pestanas.addTab("Auditoría", new PanelAdminAuditoria(empresa));
         }

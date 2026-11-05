@@ -16,6 +16,18 @@ public enum EstadoSolicitud {
         return descripcion;
     }
 
+    public static EstadoSolicitud desdeTexto(String texto) {
+        if (texto == null) {
+            return null;
+        }
+        for (EstadoSolicitud estado : values()) {
+            if (estado.name().equalsIgnoreCase(texto.trim()) || estado.descripcion.equalsIgnoreCase(texto.trim())) {
+                return estado;
+            }
+        }
+        return null;
+    }
+
     public boolean estaAbierta() {
         return this == PENDIENTE || this == EN_REVISION;
     }

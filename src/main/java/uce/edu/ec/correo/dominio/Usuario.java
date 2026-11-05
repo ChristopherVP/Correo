@@ -55,6 +55,10 @@ public class Usuario implements Serializable {
 
     private boolean suspendida;
 
+    private String motivoSuspension;
+
+    private LocalDateTime fechaSuspension;
+
     /**
      * Constructor que crea un nuevo usuario.
      * Inicializa todas las listas vacías.
@@ -255,6 +259,26 @@ public class Usuario implements Serializable {
 
     public void setSuspendida(boolean suspendida) {
         this.suspendida = suspendida;
+    }
+
+    public String getMotivoSuspension() {
+        return motivoSuspension;
+    }
+
+    public LocalDateTime getFechaSuspension() {
+        return fechaSuspension;
+    }
+
+    public void suspender(String motivo) {
+        this.suspendida = true;
+        this.motivoSuspension = motivo;
+        this.fechaSuspension = LocalDateTime.now();
+    }
+
+    public void reactivar() {
+        this.suspendida = false;
+        this.motivoSuspension = null;
+        this.fechaSuspension = null;
     }
 
     /**

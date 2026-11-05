@@ -37,7 +37,9 @@ CREATE TABLE usuarios (
     fecha_nacimiento DATE,
     genero           VARCHAR(15)  NOT NULL,
     fecha_registro   TIMESTAMP,
-    suspendida       BOOLEAN      NOT NULL DEFAULT FALSE
+    suspendida       BOOLEAN      NOT NULL DEFAULT FALSE,
+    motivo_suspension TEXT,
+    fecha_suspension TIMESTAMP
 );
 
 -- Agenda privada de cada usuario
@@ -129,7 +131,7 @@ CREATE TABLE administradores (
 CREATE TABLE solicitudes (
     id              INT PRIMARY KEY,
     usuario_email   VARCHAR(150) NOT NULL,
-    tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('QUEJA','REPORTE_TECNICO','RECOMENDACION')),
+    tipo            VARCHAR(20)  NOT NULL CHECK (tipo IN ('QUEJA','REPORTE_TECNICO','RECOMENDACION','APELACION')),
     asunto          VARCHAR(100) NOT NULL,
     descripcion     TEXT         NOT NULL,
     estado          VARCHAR(15)  NOT NULL CHECK (estado IN ('PENDIENTE','EN_REVISION','RESUELTA','RECHAZADA')),
@@ -172,6 +174,23 @@ GROUP BY tipo, estado;
 
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_registro TIMESTAMP;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS suspendida BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS motivo_suspension TEXT;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_suspension TIMESTAMP;
+ALTER TABLE solicitudes DROP CONSTRAINT IF EXISTS solicitudes_tipo_check;
+ALTER TABLE solicitudes ADD CONSTRAINT solicitudes_tipo_check
+    CHECK (tipo IN ('QUEJA','REPORTE_TECNICO','RECOMENDACION','APELACION'));
+
+CREATE OR REPLACE VIEW v_desempeno_colaboradores AS
+SELECT date_trunc('month', fecha)::date AS mes,
+       admin_email,
+       COUNT(*) FILTER (WHERE accion = 'ATENDER_SOLICITUD') AS solicitudes_atendidas,
+       COUNT(*) FILTER (WHERE accion = 'ATENDER_SOLICITUD' AND upper(detalle) = 'RESUELTA') AS resueltas,
+       COUNT(*) FILTER (WHERE accion = 'ATENDER_SOLICITUD' AND upper(detalle) = 'RECHAZADA') AS rechazadas,
+       COUNT(*) FILTER (WHERE accion = 'SUSPENDER_USUARIO') AS cuentas_suspendidas,
+       COUNT(*) FILTER (WHERE accion = 'REACTIVAR_USUARIO') AS cuentas_reactivadas,
+       COUNT(*) FILTER (WHERE accion = 'ELIMINAR_USUARIO') AS cuentas_eliminadas
+FROM auditoria_admin
+GROUP BY date_trunc('month', fecha), admin_email;
 
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
 
@@ -180,6 +199,7 @@ SELECT * FROM correos;
 SELECT * FROM grupos;
 SELECT * FROM v_resumen_usuarios;
 SELECT * FROM v_solicitudes_resumen;
+SELECT * FROM v_desempeno_colaboradores;
 SELECT * FROM solicitudes ORDER BY fecha_creacion DESC;
 SELECT * FROM auditoria_admin ORDER BY fecha DESC;
 
