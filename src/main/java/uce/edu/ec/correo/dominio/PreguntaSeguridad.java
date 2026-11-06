@@ -7,7 +7,7 @@ import java.time.format.ResolverStyle;
 
 public enum PreguntaSeguridad {
     CEDULA("Número de cédula"),
-    FECHA_NACIMIENTO("Fecha de nacimiento (dd/MM/aaaa)"),
+    FECHA_NACIMIENTO("Fecha de nacimiento"),
     TELEFONO("Número de teléfono registrado");
 
     private static final DateTimeFormatter FORMATO_FECHA =

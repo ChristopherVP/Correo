@@ -36,6 +36,14 @@ public class ControlIntentos {
         return restantes;
     }
 
+    public synchronized int intentosRestantes(String clave) {
+        if (estaBloqueado(clave)) {
+            return 0;
+        }
+        Estado estado = estados.get(clave);
+        return maximoFallos - (estado == null ? 0 : estado.fallos());
+    }
+
     public synchronized void registrarFallo(String clave) {
         Estado actual = estados.getOrDefault(clave, new Estado(0, null));
         int fallos = actual.fallos() + 1;

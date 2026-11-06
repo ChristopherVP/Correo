@@ -2,7 +2,6 @@ package uce.edu.ec.correo.gui;
 
 import uce.edu.ec.correo.dominio.CentroAdministracion;
 import uce.edu.ec.correo.dominio.EmpresaCorreo;
-import uce.edu.ec.correo.dominio.Solicitud;
 import uce.edu.ec.correo.dominio.TipoSolicitud;
 import uce.edu.ec.correo.util.EstiloUI;
 import uce.edu.ec.correo.util.ValidationException;
@@ -115,9 +114,9 @@ public class DialogoNuevaSolicitud extends JDialog {
 
     private void enviar() {
         try {
-            Solicitud solicitud = empresa.crearSolicitud((TipoSolicitud) cmbTipo.getSelectedItem(),
+            empresa.crearSolicitud((TipoSolicitud) cmbTipo.getSelectedItem(),
                     txtAsunto.getText(), txtDescripcion.getText());
-            EstiloUI.info(this, "Su solicitud #" + solicitud.getId() + " fue enviada. "
+            EstiloUI.info(this, "Su solicitud fue enviada. "
                     + "Puede revisar su estado en el Centro de Solicitudes y Mejoras.");
             enviada = true;
             dispose();

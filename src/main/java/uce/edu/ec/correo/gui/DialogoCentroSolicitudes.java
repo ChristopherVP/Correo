@@ -15,7 +15,7 @@ import java.util.List;
 public class DialogoCentroSolicitudes extends JDialog {
 
     private final EmpresaCorreo empresa;
-    private final DefaultTableModel modelo = EstiloUI.modelo("#", "Fecha", "Tipo", "Asunto", "Estado");
+    private final DefaultTableModel modelo = EstiloUI.modelo("Fecha", "Tipo", "Asunto", "Estado");
     private final JTable tabla = EstiloUI.tabla(modelo);
     private List<Solicitud> solicitudes = List.of();
 
@@ -72,7 +72,7 @@ public class DialogoCentroSolicitudes extends JDialog {
                 .toList();
         modelo.setRowCount(0);
         for (Solicitud s : solicitudes) {
-            modelo.addRow(new Object[]{s.getId(), EstiloUI.fecha(s.getFechaCreacion()),
+            modelo.addRow(new Object[]{EstiloUI.fecha(s.getFechaCreacion()),
                     s.getTipo().getDescripcion(), s.getAsunto(), s.getEstado().getDescripcion()});
         }
     }
@@ -86,20 +86,17 @@ public class DialogoCentroSolicitudes extends JDialog {
     }
 
     private void verDetalle() {
-        Object id = EstiloUI.valorSeleccionado(tabla, 0);
-        if (id == null) {
+        int fila = tabla.getSelectedRow();
+        if (fila < 0) {
             EstiloUI.info(this, "Seleccione una solicitud de la tabla.");
             return;
         }
-        solicitudes.stream()
-                .filter(s -> s.getId() == (Integer) id)
-                .findFirst()
-                .ifPresent(this::mostrarDetalle);
+        mostrarDetalle(solicitudes.get(tabla.convertRowIndexToModel(fila)));
     }
 
     private void mostrarDetalle(Solicitud s) {
         StringBuilder texto = new StringBuilder();
-        texto.append("Solicitud #").append(s.getId()).append('\n');
+        texto.append("Detalle de su solicitud\n");
         texto.append("Tipo: ").append(s.getTipo().getDescripcion()).append('\n');
         texto.append("Fecha: ").append(EstiloUI.fecha(s.getFechaCreacion())).append('\n');
         texto.append("Estado: ").append(s.getEstado().getDescripcion()).append("\n\n");

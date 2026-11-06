@@ -1,7 +1,9 @@
 package uce.edu.ec.correo.gui;
 
 import uce.edu.ec.correo.dominio.EmpresaCorreo;
+import uce.edu.ec.correo.dominio.EstadoSolicitud;
 import uce.edu.ec.correo.dominio.ResumenUsuario;
+import uce.edu.ec.correo.dominio.Solicitud;
 import uce.edu.ec.correo.util.EstiloUI;
 import uce.edu.ec.correo.util.ValidationException;
 
@@ -151,6 +153,21 @@ public class PanelAdminUsuarios extends JPanel implements PanelAdmin.Refrescable
             return;
         }
         try {
+            Solicitud apelacion = empresa.ultimaApelacion(email);
+            String aviso = "";
+            if (apelacion != null && apelacion.getEstado().estaAbierta()) {
+                aviso = "<br><br>El usuario tiene una apelación abierta: se marcará como resuelta.";
+            } else if (apelacion != null && apelacion.getEstado() == EstadoSolicitud.RECHAZADA) {
+                aviso = "<br><br><b>Atención:</b> la apelación de este usuario fue rechazada por el soporte. "
+                        + "Reactivar la cuenta contradice esa decisión.";
+            }
+            int opcion = JOptionPane.showConfirmDialog(this,
+                    "<html><body style='width: 340px;'>¿Reactivar la cuenta <b>" + email
+                            + "</b>? El usuario podrá volver a ingresar." + aviso + "</body></html>",
+                    "Reactivar cuenta", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (opcion != JOptionPane.YES_OPTION) {
+                return;
+            }
             empresa.reactivarUsuario(email);
             EstiloUI.info(this, "La cuenta fue reactivada.");
             refrescar();

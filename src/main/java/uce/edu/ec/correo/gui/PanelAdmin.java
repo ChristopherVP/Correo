@@ -3,7 +3,6 @@ package uce.edu.ec.correo.gui;
 import uce.edu.ec.correo.dominio.Administrador;
 import uce.edu.ec.correo.dominio.EmpresaCorreo;
 import uce.edu.ec.correo.util.EstiloUI;
-import uce.edu.ec.correo.util.ValidationException;
 
 import javax.swing.*;
 import java.awt.*;
@@ -43,7 +42,7 @@ public class PanelAdmin extends JPanel {
         btnExportar.addActionListener(e ->
                 new DialogoExportarReporte(SwingUtilities.getWindowAncestor(this), empresa).setVisible(true));
         JButton btnPassword = EstiloUI.boton("Cambiar contraseña");
-        btnPassword.addActionListener(e -> solicitarCambioPassword());
+        btnPassword.addActionListener(e -> solicitarCambioPassword(false));
         JButton btnSalir = EstiloUI.botonPeligro("Cerrar sesión");
         btnSalir.addActionListener(e -> cerrarSesion(true));
         acciones.add(btnExportar);
@@ -92,46 +91,17 @@ public class PanelAdmin extends JPanel {
             return;
         }
         EstiloUI.info(this, "Por seguridad debe cambiar su contraseña antes de continuar.");
-        if (!solicitarCambioPassword()) {
+        if (!solicitarCambioPassword(true)) {
+            EstiloUI.info(this, "No se cambió la contraseña. Se cerrará su sesión.");
             cerrarSesion(false);
         }
     }
 
-    private boolean solicitarCambioPassword() {
-        JPasswordField actual = new JPasswordField(18);
-        JPasswordField nueva = new JPasswordField(18);
-        JPasswordField confirmar = new JPasswordField(18);
-
-        JPanel formulario = new JPanel(new GridLayout(0, 1, 4, 4));
-        formulario.add(new JLabel("Contraseña actual:"));
-        formulario.add(actual);
-        formulario.add(new JLabel("Nueva contraseña (8-14 caracteres, al menos una mayúscula):"));
-        formulario.add(nueva);
-        formulario.add(new JLabel("Confirmar nueva contraseña:"));
-        formulario.add(confirmar);
-
-        while (true) {
-            actual.setText("");
-            nueva.setText("");
-            confirmar.setText("");
-            int opcion = JOptionPane.showConfirmDialog(this, formulario, "Cambiar contraseña",
-                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-            if (opcion != JOptionPane.OK_OPTION) {
-                return false;
-            }
-            String nuevaPassword = new String(nueva.getPassword());
-            if (!nuevaPassword.equals(new String(confirmar.getPassword()))) {
-                EstiloUI.error(this, "Las contraseñas no coinciden.");
-                continue;
-            }
-            try {
-                empresa.cambiarPasswordAdministrador(new String(actual.getPassword()), nuevaPassword);
-                EstiloUI.info(this, "Contraseña actualizada correctamente.");
-                return true;
-            } catch (ValidationException e) {
-                EstiloUI.error(this, e.getMensaje());
-            }
-        }
+    private boolean solicitarCambioPassword(boolean obligatorio) {
+        DialogoCambiarPasswordAdmin dialogo = new DialogoCambiarPasswordAdmin(
+                SwingUtilities.getWindowAncestor(this), empresa, obligatorio);
+        dialogo.setVisible(true);
+        return dialogo.fueCambiada();
     }
 
     private void cerrarSesion(boolean confirmar) {

@@ -93,8 +93,8 @@ public class DialogoApelacionSuspension extends JDialog {
                 texto.append("Aún no ha enviado ninguna apelación.");
             }
             for (Solicitud apelacion : info.apelaciones()) {
-                texto.append("Apelación #").append(apelacion.getId()).append(" — ")
-                        .append(EstiloUI.fecha(apelacion.getFechaCreacion())).append(" — ")
+                texto.append("Apelación enviada el ")
+                        .append(EstiloUI.fecha(apelacion.getFechaCreacion())).append(" — Estado: ")
                         .append(apelacion.getEstado().getDescripcion()).append('\n')
                         .append(apelacion.getDescripcion()).append('\n');
                 if (apelacion.getRespuesta() != null) {
@@ -118,9 +118,9 @@ public class DialogoApelacionSuspension extends JDialog {
 
     private void enviarApelacion() {
         try {
-            Solicitud apelacion = empresa.enviarApelacion(email, password, txtApelacion.getText());
-            EstiloUI.info(this, "Su apelación #" + apelacion.getId() + " fue enviada. "
-                    + "Vuelva a intentar iniciar sesión más tarde para ver la respuesta.");
+            empresa.enviarApelacion(email, password, txtApelacion.getText());
+            EstiloUI.info(this, "Su apelación fue enviada al soporte de EcuMail. "
+                    + "Vuelva a intentar iniciar sesión más tarde para conocer la respuesta.");
             txtApelacion.setText("");
             cargarEstado();
         } catch (ValidationException e) {

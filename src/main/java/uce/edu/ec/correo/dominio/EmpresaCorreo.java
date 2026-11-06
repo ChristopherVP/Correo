@@ -1152,6 +1152,9 @@ public class EmpresaCorreo implements Serializable {
         if (nuevoEstado == null || nuevoEstado == EstadoSolicitud.PENDIENTE) {
             throw new ValidationException("Seleccione un estado válido", "Estado");
         }
+        if (actual.getTipo() == TipoSolicitud.APELACION && !actual.getEstado().estaAbierta()) {
+            throw new ValidationException("Esta apelación ya fue atendida");
+        }
         String texto = respuesta == null ? "" : respuesta.trim();
         if (texto.length() > CentroAdministracion.DESCRIPCION_MAX) {
             throw new ValidationException("La respuesta es demasiado larga", "Respuesta");
@@ -1164,6 +1167,14 @@ public class EmpresaCorreo implements Serializable {
         Solicitud actualizada = actual.conRespuesta(nuevoEstado, respuestaFinal, admin.getEmail());
         centro().reemplazarSolicitud(actualizada);
         centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.ATENDER_SOLICITUD, "#" + id, nuevoEstado.name());
+        if (actual.getTipo() == TipoSolicitud.APELACION && nuevoEstado == EstadoSolicitud.RESUELTA) {
+            Usuario cuenta = buscarUsuarioOpcional(normalizarEmail(actual.getEmailUsuario()));
+            if (cuenta != null && cuenta.isSuspendida()) {
+                cuenta.reactivar();
+                centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.REACTIVAR_USUARIO,
+                        SeguridadUtil.enmascararEmail(cuenta.getEmail()), "Apelación aceptada");
+            }
+        }
         guardarDatosAutomaticamente();
         return actualizada;
     }
@@ -1184,6 +1195,10 @@ public class EmpresaCorreo implements Serializable {
                 .orElse(null);
     }
 
+    public long segundosBloqueoRecuperacion(String email) {
+        return controlRecuperacion().segundosRestantes(normalizarEmail(email));
+    }
+
     private void verificarRecuperacionDisponible(String clave) throws ValidationException {
         long segundos = controlRecuperacion().segundosRestantes(clave);
         if (segundos > 0) {
@@ -1199,9 +1214,15 @@ public class EmpresaCorreo implements Serializable {
         }
         verificarRecuperacionDisponible(clave);
         Usuario usuario = buscarUsuarioOpcional(clave);
+        if (usuario == null) {
+            String mensaje = centro().buscarAdministrador(clave).isPresent()
+                    ? "Las cuentas de administrador no se recuperan por este medio"
+                    : "No existe una cuenta con este email";
+            throw new ValidationException(mensaje, "Email");
+        }
         List<PreguntaSeguridad> candidatas = new ArrayList<>();
         for (PreguntaSeguridad pregunta : PreguntaSeguridad.values()) {
-            if (usuario == null || pregunta.estaDisponiblePara(usuario)) {
+            if (pregunta.estaDisponiblePara(usuario)) {
                 candidatas.add(pregunta);
             }
         }
@@ -1220,7 +1241,14 @@ public class EmpresaCorreo implements Serializable {
                 && respuestas.entrySet().stream().allMatch(e -> e.getKey().verificar(usuario, e.getValue()));
         if (!coincide) {
             controlRecuperacion().registrarFallo(clave);
-            throw new ValidationException("Los datos ingresados no coinciden con los de la cuenta", "Verificación");
+            int restantes = controlRecuperacion().intentosRestantes(clave);
+            if (restantes == 0) {
+                throw new ValidationException(
+                        "Los datos no coinciden. Se bloqueó la recuperación de esta cuenta por 15 minutos",
+                        "Verificación");
+            }
+            throw new ValidationException("Los datos ingresados no coinciden con los de la cuenta. "
+                    + "Intentos restantes: " + restantes, "Verificación");
         }
         if (!Validador.validarPassword(passwordNueva)) {
             throw new ValidationException(
@@ -1287,6 +1315,23 @@ public class EmpresaCorreo implements Serializable {
         return apelacion;
     }
 
+    public Solicitud ultimaApelacion(String email) throws ValidationException {
+        exigirAdministrador();
+        return centro().solicitudesDe(email).stream()
+                .filter(s -> s.getTipo() == TipoSolicitud.APELACION)
+                .max(java.util.Comparator.comparingInt(Solicitud::getId))
+                .orElse(null);
+    }
+
+    public InfoSuspension consultarSuspensionComoAdmin(String email) throws ValidationException {
+        exigirAdministrador();
+        Usuario usuario = buscarUsuarioOpcional(normalizarEmail(email));
+        if (usuario == null || !usuario.isSuspendida()) {
+            return null;
+        }
+        return new InfoSuspension(usuario.getMotivoSuspension(), usuario.getFechaSuspension(), List.of());
+    }
+
     public List<TipoReporte> tiposDeReportePermitidos() throws ValidationException {
         Administrador admin = exigirAdministrador();
         return java.util.Arrays.stream(TipoReporte.values()).filter(t -> t.estaPermitidoPara(admin)).toList();
@@ -1302,6 +1347,9 @@ public class EmpresaCorreo implements Serializable {
             throw new ValidationException("Este reporte solo está permitido al administrador principal");
         }
         RangoFechas rango = periodo.rango(referencia);
+        if (rango.desde().isAfter(java.time.LocalDateTime.now())) {
+            throw new ValidationException("No se pueden generar reportes de un periodo que aún no comienza");
+        }
         List<HojaReporte> hojas = GeneradorReportes.generar(tipo, rango, admin, List.copyOf(usuarios), centro());
         centro().registrarAuditoria(admin.getEmail(), AccionAuditoria.EXPORTAR_REPORTE, tipo.name(),
                 periodo.name() + " — " + rango.etiqueta());

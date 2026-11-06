@@ -17,6 +17,9 @@ public class SelectorFecha extends JPanel {
     private final JComboBox<String> cmbMes = new JComboBox<>();
     private final JComboBox<String> cmbAnio = new JComboBox<>();
     private boolean actualizando = false;
+    private boolean mostrarDia = true;
+    private boolean mostrarMes = true;
+    private Runnable accionAlCambiar;
 
     public SelectorFecha(int anioMinimo, int anioMaximo) {
         super(new GridLayout(1, 3, 6, 0));
@@ -36,10 +39,40 @@ public class SelectorFecha extends JPanel {
             combo.setFont(new Font("Arial", Font.PLAIN, 14));
             combo.setBackground(Color.WHITE);
             combo.setMaximumRowCount(10);
-            add(combo);
+            combo.addActionListener(e -> {
+                if (!actualizando && accionAlCambiar != null) {
+                    accionAlCambiar.run();
+                }
+            });
         }
+        reorganizar();
         cmbMes.addActionListener(e -> ajustarDias());
         cmbAnio.addActionListener(e -> ajustarDias());
+    }
+
+    public void alCambiar(Runnable accion) {
+        this.accionAlCambiar = accion;
+    }
+
+    public void configurar(boolean mostrarDia, boolean mostrarMes) {
+        this.mostrarDia = mostrarDia;
+        this.mostrarMes = mostrarMes || mostrarDia;
+        reorganizar();
+    }
+
+    private void reorganizar() {
+        removeAll();
+        int columnas = 1 + (mostrarMes ? 1 : 0) + (mostrarDia ? 1 : 0);
+        setLayout(new GridLayout(1, columnas, 6, 0));
+        if (mostrarDia) {
+            add(cmbDia);
+        }
+        if (mostrarMes) {
+            add(cmbMes);
+        }
+        add(cmbAnio);
+        revalidate();
+        repaint();
     }
 
     private void llenarDias(int cantidad, int seleccionado) {
@@ -66,12 +99,14 @@ public class SelectorFecha extends JPanel {
     }
 
     public LocalDate getFecha() {
-        if (cmbDia.getSelectedIndex() <= 0 || cmbMes.getSelectedIndex() <= 0 || cmbAnio.getSelectedIndex() <= 0) {
+        if (cmbAnio.getSelectedIndex() <= 0 || (mostrarMes && cmbMes.getSelectedIndex() <= 0)
+                || (mostrarDia && cmbDia.getSelectedIndex() <= 0)) {
             return null;
         }
         try {
             return LocalDate.of(Integer.parseInt((String) cmbAnio.getSelectedItem()),
-                    cmbMes.getSelectedIndex(), Integer.parseInt((String) cmbDia.getSelectedItem()));
+                    mostrarMes ? cmbMes.getSelectedIndex() : 1,
+                    mostrarDia ? Integer.parseInt((String) cmbDia.getSelectedItem()) : 1);
         } catch (DateTimeException e) {
             return null;
         }
