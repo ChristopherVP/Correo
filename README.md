@@ -20,18 +20,19 @@ The whole domain follows an object-oriented design with clear layers: domain, GU
 2. [Project Requirements](#-project-requirements)
 3. [Installation and Setup](#-installation-and-setup)
 4. [Running the Application](#-running-the-application)
-5. [User Guide](#-user-guide)
-6. [Administration Console](#-administration-console)
-7. [Security](#-security)
-8. [Validation Rules](#-validation-rules)
-9. [Domain Model](#-domain-model)
-10. [Persistence: Local File and PostgreSQL](#-persistence-local-file-and-postgresql)
-11. [Database Schema](#-database-schema)
-12. [Project Structure](#-project-structure)
-13. [Architecture and Design Notes](#-architecture-and-design-notes)
-14. [Known Limitations](#-known-limitations)
-15. [Troubleshooting](#-troubleshooting)
-16. [Author, Repository and License](#-author-repository-and-license)
+5. [Resetting the System](#-resetting-the-system)
+6. [User Guide](#-user-guide)
+7. [Administration Console](#-administration-console)
+8. [Security](#-security)
+9. [Validation Rules](#-validation-rules)
+10. [Domain Model](#-domain-model)
+11. [Persistence: Local File and PostgreSQL](#-persistence-local-file-and-postgresql)
+12. [Database Schema](#-database-schema)
+13. [Project Structure](#-project-structure)
+14. [Architecture and Design Notes](#-architecture-and-design-notes)
+15. [Known Limitations](#-known-limitations)
+16. [Troubleshooting](#-troubleshooting)
+17. [Author, Repository and License](#-author-repository-and-license)
 
 ---
 
@@ -65,6 +66,9 @@ The whole domain follows an object-oriented design with clear layers: domain, GU
 
 **Administration console**
 - Dashboard with system statistics, user management (suspend, reactivate, delete with a reason), support-request handling, administrator management, audit log and **PDF / Excel report export**. See [Administration Console](#-administration-console).
+
+**Maintenance**
+- A one-click **reset tool** (`RestablecerSistema`) wipes everything that was created while using the system and leaves it exactly as after a fresh install, with only the default main administrator. See [Resetting the System](#-resetting-the-system).
 
 **Interface and persistence**
 - Animated **splash screen**, card-based navigation, collapsible sidebar menu, custom **vector icons drawn with Java2D** (no image files needed).
@@ -104,6 +108,7 @@ The whole domain follows an object-oriented design with clear layers: domain, GU
 | FR-23 | Export reports (daily, bi-weekly, monthly, yearly) as **PDF** or **Excel (.xlsx)**. |
 | FR-24 | Persist all data automatically to `datos_sistema.dat` after each change and reload it at startup. |
 | FR-25 | On exit (with confirmation), also store everything in PostgreSQL and regenerate `usuarios_registrados.txt`. |
+| FR-26 | Provide a maintenance tool that, after an explicit confirmation, erases all created data (local files and PostgreSQL) and recreates only the default main administrator. |
 
 ### Non-functional requirements
 
@@ -168,9 +173,17 @@ On first start the system creates a **main administrator**. Its credentials come
 | Variable | Meaning | Default |
 |----------|---------|---------|
 | `ECUMAIL_ADMIN_EMAIL` | Main administrator e-mail | `admin@ecumail.ec` |
-| `ECUMAIL_ADMIN_PASSWORD` | Initial password | built-in default (change it) |
+| `ECUMAIL_ADMIN_PASSWORD` | Initial password | `CambiarAdmin1` |
 
-> ⚠️ Set your own values **before the first run** and change the password after logging in. The default password is meant for development only.
+If you do not define the variables, the first administrator is:
+
+| E-mail | Password |
+|--------|----------|
+| `admin@ecumail.ec` | `CambiarAdmin1` |
+
+The system **forces a password change at the first login**.
+
+> ⚠️ The default password is meant for development and classroom use only. For any other use, set your own values **before the first run**.
 
 ---
 
@@ -186,6 +199,42 @@ mvn compile exec:java -Dexec.mainClass="uce.edu.ec.correo.Ejecutable.EjecucionCo
 ```
 
 The app shows a splash screen and then the login window. On first run `datos_sistema.dat` is created in the working directory.
+
+---
+
+## 🧹 Resetting the System
+
+If you have not used the system for a while, do not remember which users or administrators you left, or simply want to start from scratch, run the reset tool. It is a separate class, **not part of the normal application**:
+
+`uce.edu.ec.correo.mantenimiento.RestablecerSistema`
+
+**From an IDE:** close EcuMail, right-click the class and choose *Run File*.
+
+**From the command line:**
+
+```bash
+mvn compile exec:java -Dexec.mainClass="uce.edu.ec.correo.mantenimiento.RestablecerSistema"
+```
+
+A confirmation window appears and you must type `BORRAR` to continue; anything else cancels and nothing is deleted.
+
+| What happens | Detail |
+|--------------|--------|
+| **Deleted** | All users, e-mails, contacts, groups and chats, support requests and appeals, the audit log and every collaborator administrator. |
+| **Where** | `datos_sistema.dat`, `usuarios_registrados.txt` and the PostgreSQL tables (`usuarios, correos, grupos, administradores, solicitudes, auditoria_admin` and their dependants). |
+| **Kept / recreated** | Only the default **main administrator**, exactly as on the first run. |
+
+**Default administrator after a reset**
+
+| E-mail | Password |
+|--------|----------|
+| `admin@ecumail.ec` | `CambiarAdmin1` |
+
+If you defined `ECUMAIL_ADMIN_EMAIL` / `ECUMAIL_ADMIN_PASSWORD`, those values are used instead. The password must be changed at the first login.
+
+> ⚠️ The reset is **irreversible**. Close the application first and, if you need the old data, copy `datos_sistema.dat` somewhere safe beforehand.
+>
+> If PostgreSQL is not reachable, the local files are still reset and the tool tells you that the database was not cleaned; start the server and run the tool again.
 
 ---
 
@@ -312,6 +361,8 @@ Periods: **daily**, **bi-weekly** (1–15 and 16–end of month), **monthly** an
 The PostgreSQL export runs inside **one transaction**: it first `TRUNCATE`s `usuarios, correos, grupos, administradores, solicitudes, auditoria_admin` (with `RESTART IDENTITY CASCADE`) and then re-inserts users → administrators → support requests → audit log → contacts, groups (members + messages + attachments) → e-mails (recipients, per-user state, attachments). On failure it rolls back and the app tells the user that data remains stored locally.
 
 > The database is a **snapshot/backup of the in-memory system**, not the live source of truth: the application reads from `datos_sistema.dat`.
+>
+> To erase all of it at once (local file, readable report and database) use the [reset tool](#-resetting-the-system).
 
 ---
 
@@ -363,6 +414,8 @@ Correo/
         ├── DB/
         │   ├── ConexionDB.java              # JDBC connection read from db.properties
         │   └── PersistenciaDB.java          # Full transactional export to PostgreSQL
+        ├── mantenimiento/
+        │   └── RestablecerSistema.java      # Maintenance tool: wipes all data, keeps the default admin
         ├── gui/                             # Swing interface
         │   ├── VentanaPrincipal / SplashScreen / PanelLogin / PanelRegistro / PanelMenuPrincipal
         │   ├── PanelCorreos / PanelContactos / PanelGrupos / PanelInformacionUsuario
@@ -425,7 +478,7 @@ This is an **educational project**, not a production mail server.
 | Recovery blocked | Wait 15 minutes after 3 failed attempts. |
 | Cannot register: “Dominio de email no permitido” | Use one of the allowed domains listed in [Validation Rules](#-validation-rules). |
 | Cédula rejected | Check the 10 digits, the province code (01–24) and the check digit. |
-| Reset all data | Close the app and delete `datos_sistema.dat` (and `usuarios_registrados.txt`). |
+| Reset all data / forgot which users or admins exist | Close the app and run `RestablecerSistema` (see [Resetting the System](#-resetting-the-system)). Then log in as `admin@ecumail.ec` / `CambiarAdmin1`. |
 
 ---
 
